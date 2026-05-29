@@ -1,269 +1,170 @@
-// library lcd
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-
-// library reader
 #include <SPI.h>
 #include <MFRC522.h>
-
-// library wifi
 #include <ESP8266WiFi.h>
-
-// library http
 #include <ESP8266HTTPClient.h>
-
-// library https
 #include <WiFiClientSecure.h>
-
-// library doc
 #include <ArduinoJson.h>
 
-// alamat LCD biasanya 0x27 atau 0x3F
+// ================= LCD =================
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-// RFID
+// ================= RFID =================
 #define SS_PIN D4
 #define RST_PIN D3
-#define BUZZER D8
+#define BUZZER  D8
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
-// wifi
-const char* ssid = "Yusuf habib";
-const char* password = "ssssssss";
+// ================= WIFI =================
+const char* ssid = "zaydenoman";
+const char* password = "ocamocim354@";
 
-// api
-// contoh API (ganti sesuai server kamu)
+// ================= API =================
 const char* serverUrl = "https://crud-peserta.yusuf-habib.blog/api/rfid";
 
+// ================= STATE =================
+String lastUID = "";
+unsigned long lastScanTime = 0;
+const unsigned long scanCooldown = 3000; // anti double scan 3 detik
+
+// ================= SETUP =================
 void setup() {
   Serial.begin(115200);
 
   pinMode(BUZZER, OUTPUT);
 
-  lcd.init();        // inisialisasi LCD
+  lcd.init();
   lcd.backlight();
 
-  lcd.setCursor(0,0);
-  lcd.print("Menghubungkan");
-  lcd.setCursor(0,1);
-  lcd.print("WiFi");
-
-  beep(1, 100);
+  showLCD("Connecting WiFi", "");
 
   WiFi.begin(ssid, password);
 
-  Serial.print("Connecting to ");
-  Serial.print(ssid); Serial.println(" ...");  
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
+    delay(300);
     Serial.print(".");
-    lcd.print(".");
   }
 
-  // int counter = 0;
-  // while (WiFi.status() != WL_CONNECTED) {
-  //   delay(500);
-  //   Serial.print(".");
-    
-  //   lcd.setCursor(counter, 1);
-  //   lcd.print(".");
-
-  //   counter++;
-  //   if (counter > 15) {
-  //     counter = 0;
-  //     lcd.setCursor(0,1);
-  //     lcd.print("                "); // clear baris
-  //   }
-  // }
-
-  // kalau berhasil konek
   lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("WiFi Terhubung");
-  lcd.setCursor(0,1);
-  lcd.print(WiFi.localIP());
+  showLCD("WiFi Connected", WiFi.localIP().toString());
 
-  Serial.println("\nWiFi Connected");
-  Serial.println(WiFi.localIP());
+  delay(1500);
 
-  beep(2, 500);
-
-  // RFID
   SPI.begin();
   rfid.PCD_Init();
 
+  showLCD("Tempel Kartu", "Siap Scan");
 }
 
-// void loop() {
+// ================= LOOP =================
+void loop() {
 
-//   if (WiFi.status() == WL_CONNECTED) {
-
-
-//     // http.begin(serverUrl);
-//     // HTTPClient http;
-//     // WiFiClient client;
-//     WiFiClientSecure client;
-//     client.setInsecure();
-//     HTTPClient https;
-
-//     https.begin(client, serverUrl);
-
-//     https.addHeader("Content-Type", "application/json");
-
-//     String jsonData = "{\"uid\":\"A1:B2:C3:D4\",\"status\":\"hadir\"}";
-
-//     int httpResponseCode = https.POST(jsonData);
-
-//     Serial.print("Response code: ");
-//     Serial.println(httpResponseCode);
-
-//     String response = https.getString();
-//     // Serial.println(response);
-
-//     StaticJsonDocument<200> doc;
-//     deserializeJson(doc, response);
-
-//     String msg = doc["message"];
-
-//     lcd.clear();
-//     lcd.setCursor(0,0);
-//     lcd.print("Response code: ");
-//     lcd.setCursor(0,1);
-//     lcd.print(msg);
-
-//     https.end();
-//   }
-
-//   delay(10000); // kirim tiap 10 detik (contoh)
-// }
-
-// void loop() {
-//   // cek kartu baru
-//   if (!rfid.PICC_IsNewCardPresent()) return;
-//   if (!rfid.PICC_ReadCardSerial()) return;
-
-//   // ambil UID
-//   String uid = "";
-
-//   for (byte i = 0; i < rfid.uid.size; i++) {
-//     uid += String(rfid.uid.uidByte[i], HEX);
-//     if (i < rfid.uid.size - 1) uid += ":";
-//   }
-
-//   uid.toUpperCase();
-
-//   Serial.println("UID: " + uid);
-
-//   // tampilkan ke LCD
-//   lcd.clear();
-//   lcd.setCursor(0,0);
-//   lcd.print("UID:");
-//   lcd.setCursor(0,1);
-//   lcd.print(uid);
-
-//   delay(2000);
-
-//   lcd.clear();
-//   lcd.setCursor(0,0);
-//   lcd.print("Tempel Kartu");
-
-//   beep(2, 100);
-
-//   rfid.PICC_HaltA();
-// }
-
-void loop(){
-  // tampilkan ke LCD
-  lcd.clear();
-  lcd.setCursor(0,0);
-  lcd.print("Mulai Scan");
-  lcd.setCursor(0,1);
-  lcd.print("Tempelkan Kartu");
-
+  // tampil idle (tanpa spam clear terus)
   if (!rfid.PICC_IsNewCardPresent()) return;
   if (!rfid.PICC_ReadCardSerial()) return;
 
-  // ambil UID
+  String uid = getUID();
+
+  // anti scan ulang kartu yang sama
+  if (uid == lastUID && millis() - lastScanTime < scanCooldown) {
+    rfid.PICC_HaltA();
+    return;
+  }
+
+  lastUID = uid;
+  lastScanTime = millis();
+
+  Serial.println("UID: " + uid);
+
+  showLCD("UID:", uid);
+
+  beep(1, 80);
+
+  sendToServer(uid);
+
+  rfid.PICC_HaltA();
+
+  delay(500);
+  showLCD("Tempel Kartu", "Siap Scan");
+}
+
+// ================= GET UID =================
+String getUID() {
   String uid = "";
 
   for (byte i = 0; i < rfid.uid.size; i++) {
-    if (rfid.uid.uidByte[i] < 0x10) uid += "0"; // biar 2 digit
+    if (rfid.uid.uidByte[i] < 0x10) uid += "0";
     uid += String(rfid.uid.uidByte[i], HEX);
 
     if (i < rfid.uid.size - 1) uid += ":";
   }
 
   uid.toUpperCase();
+  return uid;
+}
 
-  // tampilkan ke LCD
+// ================= SEND API =================
+void sendToServer(String uid) {
+
+  if (WiFi.status() != WL_CONNECTED) {
+    showLCD("WiFi Lost", "");
+    return;
+  }
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient https;
+  https.begin(client, serverUrl);
+  https.addHeader("Content-Type", "application/json");
+
+  StaticJsonDocument<200> doc;
+  doc["uid"] = uid;
+  doc["gate"] = 1;
+
+  String payload;
+  serializeJson(doc, payload);
+
+  int code = https.POST(payload);
+
+  String response = https.getString();
+
+  Serial.print("HTTP: ");
+  Serial.println(code);
+
+  StaticJsonDocument<256> res;
+  DeserializationError err = deserializeJson(res, response);
+
+  if (!err) {
+    String status = res["status"] | "unknown";
+    String resuid = res["uid"] | uid;
+
+    showLCD(status, resuid);
+  } else {
+    Serial.println("JSON error");
+    showLCD("Server Error", "");
+  }
+
+  https.end();
+}
+
+// ================= LCD HELPER =================
+void showLCD(String line1, String line2) {
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("UID:");
+  lcd.print(line1);
   lcd.setCursor(0, 1);
-  lcd.print(uid);
-
-  beep(2, 100);
-
- if (WiFi.status() == WL_CONNECTED) {
-
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient https;
-    https.begin(client, serverUrl);
-    https.addHeader("Content-Type", "application/json");
-
-    // ===== JSON REQUEST =====
-    StaticJsonDocument<200> docReq;
-    docReq["uid"] = uid;
-    docReq["gate"] = 1;
-
-    String jsonData;
-    serializeJson(docReq, jsonData);
-
-    int httpResponseCode = https.POST(jsonData);
-
-    // Serial.print("Response code: ");
-    // Serial.println(httpResponseCode);
-
-    // ===== RESPONSE =====
-    String response = https.getString();
-
-    StaticJsonDocument<200> docRes;
-    DeserializationError error = deserializeJson(docRes, response);
-
-    if (!error) {
-        String status = docRes["status"].as<String>();
-        String resuid = docRes["uid"].as<String>();
-
-        lcd.clear();
-        lcd.setCursor(0,0);
-        lcd.print("Status: ");
-        lcd.print(status);
-
-        lcd.setCursor(0,1);
-        lcd.print("UID: ");
-        lcd.print(resuid);
-    } else {
-        Serial.println("JSON parse error");
-    }
-
-    https.end();
-}
-  // feedback
-  // beep(2, 100);
-
-  rfid.PICC_HaltA();
-
-  delay(2000);
+  lcd.print(line2);
 }
 
-void beep(int times, int delayTime) {
+// ================= BUZZER =================
+void beep(int times, int d) {
   for (int i = 0; i < times; i++) {
     digitalWrite(BUZZER, HIGH);
-    delay(delayTime);
+    delay(d);
     digitalWrite(BUZZER, LOW);
-    delay(delayTime);
+    delay(d);
   }
 }
