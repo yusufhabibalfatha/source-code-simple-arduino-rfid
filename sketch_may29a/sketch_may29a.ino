@@ -34,7 +34,7 @@ const char* password = "ssssssss";
 
 // api
 // contoh API (ganti sesuai server kamu)
-const char* serverUrl = "https://mynodeapp.yusuf-habib.blog/rfid";
+const char* serverUrl = "https://crud-peserta.yusuf-habib.blog/api/rfid";
 
 void setup() {
   Serial.begin(115200);
@@ -49,7 +49,7 @@ void setup() {
   lcd.setCursor(0,1);
   lcd.print("WiFi");
 
-  beep(2, 100);
+  beep(1, 100);
 
   WiFi.begin(ssid, password);
 
@@ -87,7 +87,7 @@ void setup() {
   Serial.println("\nWiFi Connected");
   Serial.println(WiFi.localIP());
 
-  beep(1, 500);
+  beep(2, 500);
 
   // RFID
   SPI.begin();
@@ -174,6 +174,13 @@ void setup() {
 // }
 
 void loop(){
+  // tampilkan ke LCD
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Mulai Scan");
+  lcd.setCursor(0,1);
+  lcd.print("Tempelkan Kartu");
+
   if (!rfid.PICC_IsNewCardPresent()) return;
   if (!rfid.PICC_ReadCardSerial()) return;
 
@@ -196,38 +203,56 @@ void loop(){
   lcd.setCursor(0, 1);
   lcd.print(uid);
 
-  if (WiFi.status() == WL_CONNECTED) {
+  beep(2, 100);
+
+ if (WiFi.status() == WL_CONNECTED) {
+
     WiFiClientSecure client;
     client.setInsecure();
+
     HTTPClient https;
     https.begin(client, serverUrl);
     https.addHeader("Content-Type", "application/json");
 
-    String jsonData = "{\"uid\":\"" + uid + "\",\"status\":\"hadir\"}";
+    // ===== JSON REQUEST =====
+    StaticJsonDocument<200> docReq;
+    docReq["uid"] = uid;
+    docReq["gate"] = 1;
+
+    String jsonData;
+    serializeJson(docReq, jsonData);
 
     int httpResponseCode = https.POST(jsonData);
 
-    Serial.print("Response code: ");
-    Serial.println(httpResponseCode);
+    // Serial.print("Response code: ");
+    // Serial.println(httpResponseCode);
 
+    // ===== RESPONSE =====
     String response = https.getString();
-    // Serial.println(response);
 
-    StaticJsonDocument<200> doc;
-    deserializeJson(doc, response);
+    StaticJsonDocument<200> docRes;
+    DeserializationError error = deserializeJson(docRes, response);
 
-    String msg = doc["message"];
+    if (!error) {
+        String status = docRes["status"].as<String>();
+        String resuid = docRes["uid"].as<String>();
 
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("Response code: ");
-    lcd.setCursor(0,1);
-    lcd.print(msg);
+        lcd.clear();
+        lcd.setCursor(0,0);
+        lcd.print("Status: ");
+        lcd.print(status);
+
+        lcd.setCursor(0,1);
+        lcd.print("UID: ");
+        lcd.print(resuid);
+    } else {
+        Serial.println("JSON parse error");
+    }
 
     https.end();
-  }
+}
   // feedback
-  beep(2, 100);
+  // beep(2, 100);
 
   rfid.PICC_HaltA();
 
