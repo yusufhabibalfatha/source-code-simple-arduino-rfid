@@ -1,5 +1,5 @@
 // Script arduino reader
-// desc : untuk registrasi peserta cai baru. yaitu dengan mengirim UID ke ke api lalu menjadi cache dan masuk ke form halaman edit peserta.
+// desc : untuk mengirim data UID sebagai absensi peserta cai ke api
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <SPI.h>
@@ -20,11 +20,13 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 MFRC522 rfid(SS_PIN, RST_PIN);
 
 // ================= WIFI =================
-const char* ssid = "zaydenoman";
-const char* password = "ocamocim354@";
+const char* ssid = "Yusuf habib";
+// const char* ssid = "zaydenoman";
+const char* password = "ssssssss";
+// const char* password = "ocamocim354@";
 
 // ================= API =================
-const char* serverUrl = "https://crud-peserta.yusuf-habib.blog/api/rfid";
+const char* serverUrl = "https://crud-peserta.yusuf-habib.blog/api/absensi";
 
 // ================= STATE =================
 String lastUID = "";
@@ -88,7 +90,7 @@ void loop() {
 
   rfid.PICC_HaltA();
 
-  delay(500);
+  delay(1500);
   showLCD("Tempel Kartu", "Siap Scan");
 }
 
@@ -141,9 +143,11 @@ void sendToServer(String uid) {
 
   if (!err) {
     String status = res["status"] | "unknown";
-    String resuid = res["uid"] | uid;
+    // String resuid = res["uid"] | uid;
+    String resmessage = res["message"];
+    String resnama = res["nama"] | "unknown";
 
-    showLCD(status, resuid);
+    showLCD(resnama, status);
   } else {
     Serial.println("JSON error");
     showLCD("Server Error", "");
